@@ -1,101 +1,101 @@
 # XML/LEI Document Validator
 
-Automatisierte Qualitätsprüfung von XML-Dokumenten mit LEI-Daten (Legal Entity Identifier, ISO 17442) — inklusive Prüfziffernvalidierung, Feldregeln, Duplikaterkennung und Report.
+Automated quality checks for XML documents containing LEI data (Legal Entity Identifier, ISO 17442), including checksum validation, field rules, duplicate detection and reporting.
 
-## Das Problem
+## The problem
 
-In meiner Zeit bei der EQS Group habe ich zwei Jahre lang XML-Dokumente und LEI-Daten geprüft: Pflichtfelder, Formate, Konsistenz — Dokument für Dokument, von Hand. Die Prüfung war immer dieselbe, nur die Daten änderten sich.
+During two years at EQS Group I checked XML documents and LEI data by hand: required fields, formats, consistency, document by document. The checks were always the same, only the data changed.
 
-Genau diese Wiederholung war der Anlass für dieses Projekt: Ich wollte wissen, wie man so eine Prüfung sauber automatisiert, statt sie zu wiederholen.
+That repetition is what started this project. I wanted to know how to automate such a check properly instead of repeating it.
 
-## Was das Tool macht
+## What the tool does
 
 ```
-XML-Dateien  →  Parsing  →  Regelprüfung  →  Duplikat-Check  →  Report (CSV/JSON)
+XML files  →  parsing  →  rule checks  →  duplicate check  →  report (CSV/JSON)
 ```
 
-- **LEI-Validierung** nach ISO 17442, inklusive der mod-97-10-Prüfziffer (ISO 7064) — erkennt also nicht nur falsche Formate, sondern auch Tippfehler in formal korrekten Codes
-- **Feldregeln:** Pflichtfelder, Datumsformat und Plausibilität (kein Datum in der Zukunft), ISO-3166-Ländercodes, erlaubte Statuswerte
-- **Duplikaterkennung** über alle Dateien hinweg: jede Datei für sich korrekt, zusammen aber widersprüchlich
-- **Report** als CSV oder JSON, mit Fehleranzahl und konkreter Fehlerbeschreibung pro Dokument
-- **Exit-Codes** für Automatisierung: `0` = alles sauber, `1` = Fehler gefunden, `2` = Ausführungsfehler
+- **LEI validation** per ISO 17442, including the mod-97-10 check digits (ISO 7064), so it catches not only malformed codes but also typos in codes that look correct
+- **Field rules:** required fields, date format and plausibility (no future dates), ISO 3166 country codes, allowed status values
+- **Duplicate detection** across all files: each file valid on its own, but contradictory together
+- **Report** as CSV or JSON, with an error count and a concrete description per document
+- **Exit codes** for automation: `0` = all clean, `1` = errors found, `2` = execution error
 
-## Verwendung
+## Usage
 
 ```bash
 python src/validate_documents.py --input ./samples --report ./report.csv
 python src/validate_documents.py --input ./samples --report ./report.json --format json
 ```
 
-Beispielausgabe:
+Example output:
 
 ```
 [INFO] entity_001.xml           OK
-[INFO] entity_003_badchecksum.xml 1 Fehler
-[INFO] entity_004_missing.xml   5 Fehler
-[WARNING] Duplikat: LEI 529900T8BM49AURSDO55 in entity_001.xml, entity_005_duplicate.xml
-[INFO] Ergebnis: 5 Dokumente geprüft, 4 fehlerhaft
+[INFO] entity_003_badchecksum.xml 1 error
+[INFO] entity_004_missing.xml   5 errors
+[WARNING] Duplicate: LEI 529900T8BM49AURSDO55 in entity_001.xml, entity_005_duplicate.xml
+[INFO] Result: 5 documents checked, 4 with errors
 ```
 
-Report (Auszug):
+Report (excerpt):
 
 | file | lei | status | error_count | errors |
 |---|---|---|---|---|
 | entity_002.xml | 5493001KJTIIGC8Y1R12 | OK | 0 | |
-| entity_003_badchecksum.xml | 529900T8BM49AURSDO99 | FEHLER | 1 | lei: LEI-Prüfziffer falsch (mod-97-10) |
-| entity_004_missing.xml | | FEHLER | 5 | lei: LEI fehlt; legalName: Pflichtfeld ist leer; ... |
+| entity_003_badchecksum.xml | 529900T8BM49AURSDO99 | ERROR | 1 | lei: LEI check digits invalid (mod-97-10) |
+| entity_004_missing.xml | | ERROR | 5 | lei: LEI missing; legalName: required field is empty; ... |
 
-## Automatisierung mit Cron
+## Scheduling with Cron
 
-Damit die Prüfung ohne manuelles Anstoßen läuft, wird das Skript zeitgesteuert ausgeführt:
+To run the check without manual triggering, the script is scheduled:
 
 ```bash
 # crontab -e
-# Jeden Werktag um 6:30 Uhr alle eingegangenen Dokumente prüfen
+# Every weekday at 6:30 check all incoming documents
 30 6 * * 1-5 /usr/bin/python3 /opt/lei-validator/src/validate_documents.py \
     --input /data/incoming --report /data/reports/$(date +\%F).csv >> /var/log/lei-validator.log 2>&1
 ```
 
-Der Exit-Code macht das Skript in Pipelines nutzbar: bei `1` kann ein Folgeschritt einen Alert auslösen, statt fehlerhafte Daten weiterzureichen.
+The exit code makes the script usable in pipelines: on `1`, a follow-up step can raise an alert instead of passing faulty data downstream.
 
-## Wie die LEI-Prüfziffer funktioniert
+## How the LEI check digits work
 
-Ein LEI hat 20 Zeichen; die letzten beiden sind Prüfziffern. Die Validierung nach ISO 7064 (mod-97-10):
+An LEI has 20 characters; the last two are check digits. Validation per ISO 7064 (mod-97-10):
 
-1. Buchstaben in Zahlen umwandeln (A=10, B=11, … Z=35) — aus dem alphanumerischen Code wird eine lange Zahl
-2. Diese Zahl modulo 97 rechnen
-3. Das Ergebnis muss **1** sein, sonst ist der Code fehlerhaft
+1. Convert letters to numbers (A=10, B=11, … Z=35), turning the alphanumeric code into one long number
+2. Take that number modulo 97
+3. The result must be **1**, otherwise the code is invalid
 
-Dadurch fallen Tipp- und Zahlendreher auf, die eine reine Formatprüfung (Länge, erlaubte Zeichen) nicht bemerkt.
+This catches typos and transposed digits that a pure format check (length, allowed characters) would miss.
 
 ## Tests
 
 ```bash
-python tests/test_validators.py       # 9 Tests, ohne externe Abhängigkeiten
-python -m pytest tests/ -v            # alternativ mit pytest
+python tests/test_validators.py       # 9 tests, no external dependencies
+python -m pytest tests/ -v            # or with pytest
 ```
 
-## Projektstruktur
+## Project structure
 
 ```
 ├── src/
-│   ├── validators.py           # Validierungsregeln (je Regel eine testbare Funktion)
-│   └── validate_documents.py   # CLI: Dateien einlesen, prüfen, Report schreiben
+│   ├── validators.py           # validation rules (one testable function per rule)
+│   └── validate_documents.py   # CLI: read files, validate, write report
 ├── tests/
-│   └── test_validators.py      # Unit-Tests der Regeln
-├── samples/                    # Beispieldokumente (gültig + bewusst fehlerhaft)
+│   └── test_validators.py      # unit tests for the rules
+├── samples/                    # example documents (valid + deliberately broken)
 └── README.md
 ```
 
-## Technische Entscheidungen
+## Design decisions
 
-- **Regeln als einzelne Funktionen:** Jede Regel gibt `None` (ok) oder eine Fehlermeldung zurück. Dadurch sind sie einzeln testbar und beliebig kombinierbar; neue Felder erfordern nur einen zusätzlichen Eintrag im Regelwerk.
-- **Nur Standardbibliothek:** kein `pip install` nötig, das Skript läuft auf jedem System mit Python 3 — praktisch für Cron-Jobs auf Servern.
-- **Fehler sammeln statt abbrechen:** Ein Dokument wird vollständig geprüft, damit der Report alle Probleme auf einmal zeigt, statt nach dem ersten Fehler zu stoppen.
+- **Rules as individual functions:** each rule returns `None` (ok) or an error message. This makes them testable in isolation and freely composable; adding a new field only requires one more entry in the rule set.
+- **Standard library only:** no `pip install` needed, so the script runs on any system with Python 3, which is convenient for cron jobs on servers.
+- **Collect errors instead of aborting:** a document is validated completely, so the report shows all problems at once instead of stopping at the first one.
 
 ## Stack
 
-Python 3 (Standardbibliothek: `xml.etree.ElementTree`, `csv`, `json`, `re`, `argparse`, `logging`, `pathlib`), Cron
+Python 3 (standard library: `xml.etree.ElementTree`, `csv`, `json`, `re`, `argparse`, `logging`, `pathlib`), Cron
 
 ---
 
