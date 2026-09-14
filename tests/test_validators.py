@@ -1,7 +1,7 @@
-"""Tests fuer die Validierungsregeln.
+"""Tests for the validation rules.
 
-Ausfuehren mit:  python -m pytest tests/ -v
-(oder ohne pytest:  python tests/test_validators.py)
+Run with:  python -m pytest tests/ -v
+(or without pytest:  python tests/test_validators.py)
 """
 
 import sys
@@ -27,43 +27,43 @@ def test_valid_lei_passes():
 
 
 def test_wrong_checksum_fails():
-    assert "Pruefziffer" in validate_lei("529900T8BM49AURSDO99")
+    assert "check digits" in validate_lei("529900T8BM49AURSDO99")
 
 
 def test_too_short_fails():
-    assert "20 Zeichen" in validate_lei("529900T8BM49")
+    assert "20 characters" in validate_lei("529900T8BM49")
 
 
 def test_empty_lei_fails():
-    assert validate_lei("") == "LEI fehlt"
+    assert validate_lei("") == "LEI missing"
 
 
 def test_lowercase_is_accepted():
-    # Wir normalisieren auf Grossbuchstaben, daher gueltig
+    # We normalise to uppercase, so this is valid
     assert validate_lei(VALID_LEI.lower()) is None
 
 
 def test_required_field():
     assert validate_required("Muster GmbH") is None
-    assert validate_required("   ") == "Pflichtfeld ist leer"
+    assert validate_required("   ") == "required field is empty"
 
 
 def test_date_rules():
     assert validate_date("2021-04-19") is None
-    assert "Format" in validate_date("19.04.2021")
-    assert "Zukunft" in validate_date("2099-01-01")
+    assert "format" in validate_date("19.04.2021")
+    assert "future" in validate_date("2099-01-01")
 
 
 def test_country_rules():
     assert validate_country("DE") is None
     assert validate_country("de") is None
-    assert "ungueltig" in validate_country("XX1")
+    assert "invalid" in validate_country("XX1")
 
 
 def test_enum_rules():
     allowed = {"ACTIVE", "INACTIVE"}
     assert validate_enum("active", allowed) is None
-    assert "nicht erlaubt" in validate_enum("UNKNOWN", allowed)
+    assert "not allowed" in validate_enum("UNKNOWN", allowed)
 
 
 if __name__ == "__main__":
