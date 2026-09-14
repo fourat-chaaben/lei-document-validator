@@ -1,9 +1,9 @@
 """
-Validierungsregeln fuer LEI- und XML-Dokumentdaten.
+Validation rules for LEI and XML document data.
 
-Kernidee: Jede Regel ist eine kleine, testbare Funktion, die entweder
-None (alles ok) oder eine Fehlermeldung als String zurueckgibt.
-So kann man Regeln beliebig kombinieren und einzeln testen.
+Core idea: every rule is a small, testable function that returns either
+None (all good) or an error message as a string. This makes rules easy to
+combine and to test in isolation.
 """
 
 import re
@@ -12,20 +12,20 @@ from datetime import datetime
 # ---------------------------------------------------------------------------
 # LEI (Legal Entity Identifier, ISO 17442)
 # ---------------------------------------------------------------------------
-# Aufbau: 20 Zeichen.
-#   Stelle 1-4   : LOU-Praefix (vergebende Stelle)
-#   Stelle 5-6   : immer "00" (reserviert)
-#   Stelle 7-18  : Entitaets-Teil (alphanumerisch)
-#   Stelle 19-20 : Pruefziffern (mod-97-10 nach ISO 7064)
+# Structure: 20 characters.
+#   pos 1-4   : LOU prefix (issuing organisation)
+#   pos 5-6   : always "00" (reserved)
+#   pos 7-18  : entity part (alphanumeric)
+#   pos 19-20 : check digits (mod-97-10 per ISO 7064)
 
 LEI_PATTERN = re.compile(r"^[A-Z0-9]{18}[0-9]{2}$")
 
 
 def _to_numeric(text: str) -> str:
-    """Buchstaben in Zahlen umwandeln: A=10, B=11, ... Z=35.
+    """Convert letters to numbers: A=10, B=11, ... Z=35.
 
-    Das ist der ISO-7064-Trick: Aus dem alphanumerischen Code wird eine
-    (sehr lange) reine Zahl, mit der man rechnen kann.
+    This is the ISO 7064 trick: the alphanumeric code becomes one (very long)
+    plain number we can do arithmetic on.
     """
     out = []
     for char in text:
@@ -37,10 +37,10 @@ def _to_numeric(text: str) -> str:
 
 
 def lei_checksum_valid(lei: str) -> bool:
-    """Prueft die mod-97-10 Pruefziffer eines LEI.
+    """Check the mod-97-10 check digits of an LEI.
 
-    Verfahren: kompletten Code (inkl. Pruefziffern) in Zahlen wandeln
-    und modulo 97 rechnen. Ergebnis muss 1 sein.
+    Method: convert the full code (including check digits) to numbers and
+    take it modulo 97. The result must be 1.
     """
     if not LEI_PATTERN.match(lei):
         return False
@@ -48,63 +48,63 @@ def lei_checksum_valid(lei: str) -> bool:
 
 
 def validate_lei(value):
-    """Regel: Feld muss ein formal und rechnerisch gueltiger LEI sein."""
+    """Rule: field must be a structurally and arithmetically valid LEI."""
     if not value:
-        return "LEI fehlt"
+        return "LEI missing"
     lei = value.strip().upper()
     if len(lei) != 20:
-        return f"LEI muss 20 Zeichen haben, hat {len(lei)}"
+        return f"LEI must be 20 characters, got {len(lei)}"
     if not LEI_PATTERN.match(lei):
-        return "LEI-Format ungueltig (erwartet: 18 alphanumerische + 2 Ziffern)"
+        return "LEI format invalid (expected 18 alphanumeric + 2 digits)"
     if not lei_checksum_valid(lei):
-        return "LEI-Pruefziffer falsch (mod-97-10)"
+        return "LEI check digits invalid (mod-97-10)"
     return None
 
 
 # ---------------------------------------------------------------------------
-# Allgemeine Feldregeln
+# General field rules
 # ---------------------------------------------------------------------------
 
 def validate_required(value):
-    """Regel: Pflichtfeld darf nicht leer sein."""
+    """Rule: required field must not be empty."""
     if value is None or str(value).strip() == "":
-        return "Pflichtfeld ist leer"
+        return "required field is empty"
     return None
 
 
 def validate_date(value, fmt="%Y-%m-%d"):
-    """Regel: Datum muss dem Format entsprechen und darf nicht in der Zukunft liegen."""
+    """Rule: date must match the format and must not be in the future."""
     if not value:
-        return "Datum fehlt"
+        return "date missing"
     try:
         parsed = datetime.strptime(value.strip(), fmt)
     except ValueError:
-        return f"Datum '{value}' entspricht nicht dem Format {fmt}"
+        return f"date '{value}' does not match format {fmt}"
     if parsed > datetime.now():
-        return f"Datum '{value}' liegt in der Zukunft"
+        return f"date '{value}' is in the future"
     return None
 
 
 def validate_country(value):
-    """Regel: ISO-3166-Laendercode, zwei Grossbuchstaben."""
+    """Rule: ISO 3166 country code, two uppercase letters."""
     if not value:
-        return "Laendercode fehlt"
+        return "country code missing"
     if not re.match(r"^[A-Z]{2}$", value.strip().upper()):
-        return f"Laendercode '{value}' ungueltig (erwartet 2 Buchstaben, z.B. DE)"
+        return f"country code '{value}' invalid (expected 2 letters, e.g. DE)"
     return None
 
 
 def validate_enum(value, allowed):
-    """Regel: Wert muss aus einer erlaubten Liste stammen."""
+    """Rule: value must come from an allowed set."""
     if not value:
-        return "Wert fehlt"
+        return "value missing"
     if value.strip().upper() not in allowed:
-        return f"Wert '{value}' nicht erlaubt (erlaubt: {', '.join(sorted(allowed))})"
+        return f"value '{value}' not allowed (allowed: {', '.join(sorted(allowed))})"
     return None
 
 
 # ---------------------------------------------------------------------------
-# Regelwerk: welches Feld wird wie geprueft
+# Rule set: which field is checked how
 # ---------------------------------------------------------------------------
 
 STATUS_VALUES = {"ACTIVE", "INACTIVE", "PENDING"}
