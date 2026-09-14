@@ -3,21 +3,20 @@
 XML/LEI Document Validator
 ==========================
 
-Prueft XML-Dokumente mit Entitaetsdaten automatisch auf Vollstaendigkeit,
-Formatkorrektheit und Konsistenz - und schreibt einen Report.
+Automatically checks XML documents containing entity data for completeness,
+format correctness and consistency, and writes a report.
 
-Hintergrund: In meiner Zeit bei der EQS Group habe ich solche Dokumente
-manuell geprueft. Dieses Tool ist meine Antwort darauf: die immer gleiche
-Pruefung als Skript, das per Cron automatisch laufen kann.
+Background: at EQS Group I ran these checks by hand. This tool is my answer
+to that: the same repetitive check as a script that can run via Cron.
 
-Verwendung:
+Usage:
     python validate_documents.py --input ./samples --report ./report.csv
     python validate_documents.py --input ./samples --report ./report.json --format json
 
-Exit-Codes (wichtig fuer Automatisierung):
-    0 = alle Dokumente gueltig
-    1 = mindestens ein Fehler gefunden
-    2 = Ausfuehrungsfehler (z.B. Ordner nicht gefunden)
+Exit codes (relevant for automation):
+    0 = all documents valid
+    1 = at least one error found
+    2 = execution error (e.g. directory not found)
 """
 
 import argparse
@@ -40,9 +39,9 @@ log = logging.getLogger("validator")
 
 
 def parse_document(path: Path) -> dict:
-    """Liest eine XML-Datei und gibt die Felder als Dictionary zurueck.
+    """Read an XML file and return its fields as a dictionary.
 
-    Erwartete Struktur:
+    Expected structure:
         <entity>
             <lei>...</lei>
             <legalName>...</legalName>
@@ -55,11 +54,11 @@ def parse_document(path: Path) -> dict:
 
 
 def validate_document(fields: dict) -> list:
-    """Wendet alle Regeln auf ein Dokument an und sammelt die Fehler."""
+    """Apply all rules to one document and collect the errors."""
     errors = []
     for field, rule in FIELD_RULES.items():
         if field not in fields:
-            errors.append(f"{field}: Feld fehlt im Dokument")
+            errors.append(f"{field}: field missing in document")
             continue
         problem = rule(fields[field])
         if problem:
@@ -68,10 +67,10 @@ def validate_document(fields: dict) -> list:
 
 
 def find_duplicates(results: list) -> dict:
-    """Findet LEIs, die in mehreren Dateien vorkommen.
+    """Find LEIs that appear in more than one file.
 
-    Duplikate sind ein klassischer Datenqualitaetsfehler: formal ist jede
-    Datei korrekt, aber zusammen ergeben sie einen Widerspruch.
+    Duplicates are a classic data quality issue: each file is valid on its
+    own, but together they contradict each other.
     """
     seen = defaultdict(list)
     for row in results:
@@ -82,10 +81,10 @@ def find_duplicates(results: list) -> dict:
 
 
 def run(input_dir: Path) -> list:
-    """Prueft alle XML-Dateien im Ordner und gibt die Ergebnisse zurueck."""
+    """Validate all XML files in the directory and return the results."""
     files = sorted(input_dir.glob("*.xml"))
     if not files:
-        log.warning("Keine XML-Dateien in %s gefunden", input_dir)
+        log.warning("No XML files found in %s", input_dir)
 
     results = []
     for path in files:
@@ -93,33 +92,34 @@ def run(input_dir: Path) -> list:
             fields = parse_document(path)
             errors = validate_document(fields)
         except ET.ParseError as exc:
-            fields, errors = {}, [f"XML nicht lesbar: {exc}"]
+            fields, errors = {}, [f"XML not readable: {exc}"]
 
         results.append({
             "file": path.name,
             "lei": fields.get("lei", ""),
             "legalName": fields.get("legalName", ""),
-            "status": "OK" if not errors else "FEHLER",
+            "status": "OK" if not errors else "ERROR",
             "error_count": len(errors),
             "errors": "; ".join(errors),
         })
-        log.info("%-24s %s", path.name, "OK" if not errors else f"{len(errors)} Fehler")
+        log.info("%-26s %s", path.name, "OK" if not errors else f"{len(errors)} error(s)")
 
-    # Duplikate nachtraeglich markieren
+    # mark duplicates afterwards
     for lei, dupe_files in find_duplicates(results).items():
-        log.warning("Duplikat: LEI %s in %s", lei, ", ".join(dupe_files))
+        log.warning("Duplicate: LEI %s in %s", lei, ", ".join(dupe_files))
         for row in results:
             if row["lei"] == lei:
-                row["status"] = "FEHLER"
+                row["status"] = "ERROR"
                 row["error_count"] += 1
-                extra = f"lei: Duplikat (auch in {', '.join(f for f in dupe_files if f != row['file'])})"
+                others = ", ".join(f for f in dupe_files if f != row["file"])
+                extra = f"lei: duplicate (also in {others})"
                 row["errors"] = f"{row['errors']}; {extra}" if row["errors"] else extra
 
     return results
 
 
 def write_report(results: list, report_path: Path, fmt: str) -> None:
-    """Schreibt den Report als CSV oder JSON."""
+    """Write the report as CSV or JSON."""
     report_path.parent.mkdir(parents=True, exist_ok=True)
     if fmt == "json":
         report_path.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -128,25 +128,25 @@ def write_report(results: list, report_path: Path, fmt: str) -> None:
             writer = csv.DictWriter(fh, fieldnames=["file", "lei", "legalName", "status", "error_count", "errors"])
             writer.writeheader()
             writer.writerows(results)
-    log.info("Report geschrieben: %s", report_path)
+    log.info("Report written: %s", report_path)
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validiert XML-Dokumente mit LEI-Daten.")
-    parser.add_argument("--input", required=True, type=Path, help="Ordner mit XML-Dateien")
-    parser.add_argument("--report", default=Path("report.csv"), type=Path, help="Pfad fuer den Report")
-    parser.add_argument("--format", choices=["csv", "json"], default="csv", help="Report-Format")
+    parser = argparse.ArgumentParser(description="Validates XML documents containing LEI data.")
+    parser.add_argument("--input", required=True, type=Path, help="directory containing XML files")
+    parser.add_argument("--report", default=Path("report.csv"), type=Path, help="path for the report")
+    parser.add_argument("--format", choices=["csv", "json"], default="csv", help="report format")
     args = parser.parse_args()
 
     if not args.input.is_dir():
-        log.error("Ordner nicht gefunden: %s", args.input)
+        log.error("Directory not found: %s", args.input)
         return 2
 
     results = run(args.input)
     write_report(results, args.report, args.format)
 
-    failed = sum(1 for r in results if r["status"] == "FEHLER")
-    log.info("Ergebnis: %d Dokumente geprueft, %d fehlerhaft", len(results), failed)
+    failed = sum(1 for r in results if r["status"] == "ERROR")
+    log.info("Result: %d documents checked, %d with errors", len(results), failed)
     return 1 if failed else 0
 
 
